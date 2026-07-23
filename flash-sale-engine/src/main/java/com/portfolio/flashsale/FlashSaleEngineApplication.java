@@ -2,6 +2,7 @@ package com.portfolio.flashsale;
 
 import com.portfolio.flashsale.domain.Product;
 import com.portfolio.flashsale.infrastructure.persistence.ProductRepository;
+import com.portfolio.flashsale.infrastructure.cache.RedisStockService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -17,14 +18,25 @@ public class FlashSaleEngineApplication {
         SpringApplication.run(FlashSaleEngineApplication.class, args);
     }
 
-    // Bean para poblar la base de datos de pruebas automáticamente
     @Bean
-    CommandLineRunner initDatabase(ProductRepository repository) {
+    CommandLineRunner initRedisStock(ProductRepository productRepository, RedisStockService redisStockService) {
         return args -> {
-            if (repository.count() == 0) {
-                repository.save(new Product("Zapatillas Nike Jordan", 10, 150.00));
-                System.out.println("✅ Producto de prueba insertado en PostgreSQL");
-            }
+            // Buscamos o creamos el producto de prueba para asegurar un stock inicial de 100 unidades
+            Product product = productRepository.findById(1L).orElseGet(() -> {
+                Product newProduct = new Product();
+                newProduct.setName("Smartphone Flash Sale");
+                newProduct.setPrice(299.99);
+                return newProduct;
+            });
+
+            // Forzamos el stock a 100 para las pruebas del motor de alta concurrencia
+            product.setStock(100);
+            productRepository.save(product);
+            System.out.println("Producto de prueba inicializado/actualizado en PostgreSQL con 100 unidades.");
+
+            // Sincronizamos el stock exacto hacia Redis
+            redisStockService.setStock(product.getId(), product.getStock());
+            System.out.println("Stock sincronizado en Redis para el producto ID: " + product.getId() + " con " + product.getStock() + " unidades.");
         };
     }
 }
